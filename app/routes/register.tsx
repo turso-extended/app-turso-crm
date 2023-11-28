@@ -103,7 +103,7 @@ export default function Register() {
   return (
     <div className="flex justify-center my-24 px-4">
       <div className="max-w-md w-full">
-        <h1 className="text-4xl">Register your organization.</h1>
+        <h1 className="text-4xl">Create an organization.</h1>
 
         {registerFetcher.state === "idle" && registerFetcher.data && (
           <div className="flex items-center justify-center my-3 bg-red-100">
@@ -195,7 +195,7 @@ export default function Register() {
                 type="submit"
               >
                 {registerFetcher.state === "submitting" && !registerFetcher.data && <LoaderIcon styles="h-4 w-4 animate-spin fill-white" />}
-                <span>Sign in</span>
+                <span>Sign Up</span>
               </button>
             </div>
           </div>
