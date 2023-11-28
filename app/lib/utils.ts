@@ -1,11 +1,5 @@
 import axios from "axios";
-import {
-  makeAgent,
-  makeConversation,
-  makeMessage,
-  makeTicket,
-  type Organization,
-} from "./types";
+import { makeConversation, makeTicket, type Organization } from "./types";
 import { buildOrgDbClient } from "./client-org";
 import { buildDbClient } from "./client";
 
