@@ -111,7 +111,7 @@ export async function getAllOrganizations() {
 
   const time = new Delta();
   const organizations = await db.prepare("SELECT * FROM organizations").all();
-  time.stop();
+  time.stop("Fetching all organizations");
 
   return organizations !== undefined
     ? organizations.map((org: any) => ({ ...org, dbUrl: org.db_url }))
