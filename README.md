@@ -73,6 +73,14 @@ First, build your app for production:
 npm run build
 ```
 
+Rename the `.env.example` file to `.env.production` and populate the keys within with the needed values.
+
+Sync the project's embedded replicas by running.
+
+```sh
+npm run start-replicas
+```
+
 Then run the app in production mode:
 
 ```sh
