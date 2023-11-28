@@ -1,10 +1,10 @@
-import { drizzle } from "drizzle-orm/libsql";
-import { createClient } from "@libsql/client/http";
-import * as schema from "../../drizzle/schema";
+// @ts-ignore
+import Database from "libsql";
 
 interface Env {
   TURSO_DB_AUTH_TOKEN?: string;
   TURSO_DB_URL?: string;
+  APP_LOCAL_DB_PATH?: string;
 }
 
 export function buildDbClient() {
@@ -18,5 +18,15 @@ export function buildDbClient() {
     throw new Error("TURSO_DB_AUTH_TOKEN is not defined");
   }
 
-  return drizzle(createClient({ url, authToken }), { schema });
+  const localDbPath = (process.env as unknown as Env).APP_LOCAL_DB_PATH?.trim();
+  if (localDbPath === undefined) {
+    throw new Error("APP_LOCAL_DB_PATH is not defined");
+  }
+
+  const options = {
+    syncUrl: process.env.TURSO_DB_URL,
+    authToken: process.env.TURSO_DB_AUTH_TOKEN,
+  };
+
+  return new Database(localDbPath, options);
 }

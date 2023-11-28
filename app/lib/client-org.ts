@@ -1,14 +1,14 @@
-import { drizzle } from "drizzle-orm/libsql";
-import { createClient } from "@libsql/client/http";
-import * as schema from "../../drizzle/org-schema";
+// @ts-ignore
+import Database from "libsql";
+import { tenantDbLocalPath } from "./utils";
 
 interface Env {
   url: string;
   TURSO_DB_AUTH_TOKEN?: string;
 }
 
-export function buildDbClient({ url }: Env) {
-  if (url === undefined) {
+export function buildOrgDbClient({ url }: Env) {
+  if (url === undefined || url == null) {
     throw new Error("db url is not defined");
   }
 
@@ -17,7 +17,8 @@ export function buildDbClient({ url }: Env) {
     throw new Error("TURSO_DB_AUTH_TOKEN is not defined");
   }
 
-  return drizzle(createClient({ url: `libsql://${url}`, authToken }), {
-    schema,
+  return new Database(tenantDbLocalPath(url), {
+    syncUrl: `libsql://${url}`,
+    authToken,
   });
 }

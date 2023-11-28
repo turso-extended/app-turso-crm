@@ -1,21 +1,16 @@
 import { type ActionFunctionArgs, json } from "@vercel/remix";
-import { buildDbClient } from "~/lib/client";
-import { buildDbClient as buildOrgDbClient } from "~/lib/client-org";
+import { buildOrgDbClient } from "~/lib/client-org";
 import { v4 as uuidv4 } from "uuid";
-import { tickets } from "drizzle/org-schema";
-import { dateToUnixepoch } from "~/lib/utils";
-import { eq } from "drizzle-orm";
+import { Delta, dateToUnixepoch } from "~/lib/utils";
+import { getOrganizationDetails } from "~/lib/session.server";
 
 export async function action({ request }: ActionFunctionArgs) {
   const formData = await request.formData();
   const { _action, ...values } = Object.fromEntries(formData);
 
-  const db = buildDbClient();
-
   // get organization
-  const currentOrganization = await db.query.organizations.findFirst({
-    where: (organizations, { eq }) =>
-      eq(organizations.username, values.organization_username as string),
+  const currentOrganization = await getOrganizationDetails({
+    organizationUsername: values.organization_username as string,
   });
 
   if (currentOrganization === undefined) {
@@ -37,18 +32,27 @@ export async function action({ request }: ActionFunctionArgs) {
     };
 
     const id = uuidv4();
-    const ticketInformation = {
-      id,
-      customerEmail: customer_email,
-      customerName: customer_name,
-      query,
-    };
+
+    const ticketInformation = [id, customer_email, customer_name, query, 0];
 
     //* open a ticket
+    const t1 = new Delta();
+    await manageOrgDbs
+      .prepare(
+        "INSERT INTO tickets(id, customer_email, customer_name, query, is_closed) values(?, ?, ?, ?, ?)"
+      )
+      .run(ticketInformation);
+    t1.stop("Creating a new ticket");
+
+    const t2 = new Delta();
+    await manageOrgDbs.sync();
+    t2.stop("Syncronization");
+
+    const t3 = new Delta();
     const openedTicket = await manageOrgDbs
-      .insert(tickets)
-      .values(ticketInformation)
-      .run();
+      .prepare("SELECT * FROM tickets WHERE id = ?")
+      .get(id);
+    t3.stop("Fetching created ticket");
 
     if (openedTicket === undefined) {
       return json(
@@ -89,13 +93,10 @@ export async function action({ request }: ActionFunctionArgs) {
     }
 
     const udpateTicket = await manageOrgDbs
-      .update(tickets)
-      .set({
-        serviceRating: rating,
-        updatedAt: dateToUnixepoch(),
-      })
-      .where(eq(tickets.id, ticket_id))
-      .run();
+      .prepare(
+        "UPDATE tickets SET service_rating = ?, updated_at = ? WHERE id = ?"
+      )
+      .run([rating, dateToUnixepoch(), ticket_id]);
 
     if (udpateTicket === undefined) {
       return json(

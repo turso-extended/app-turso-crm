@@ -1,14 +1,12 @@
 import { type ActionFunctionArgs, json } from "@vercel/remix";
-import { buildDbClient } from "~/lib/client";
-import { buildDbClient as buildOrgDbClient } from "~/lib/client-org";
+import { buildOrgDbClient } from "~/lib/client-org";
 import { v4 as uuidv4 } from "uuid";
-import { messages } from "drizzle/org-schema";
+import { Delta } from "~/lib/utils";
+import { getOrganizationDetails } from "~/lib/session.server";
 
 export async function action({ request }: ActionFunctionArgs) {
   const formData = await request.formData();
   const { _action, ...values } = Object.fromEntries(formData);
-
-  const db = buildDbClient();
 
   if (values.organization_username === undefined) {
     return json(
@@ -18,10 +16,11 @@ export async function action({ request }: ActionFunctionArgs) {
   }
 
   // get organization
-  const currentOrganization = await db.query.organizations.findFirst({
-    where: (organizations, { eq }) =>
-      eq(organizations.username, values.organization_username as string),
+  const t0 = new Delta();
+  const currentOrganization = await getOrganizationDetails({
+    organizationUsername: values.organization_username as string,
   });
+  t0.stop("Fetching single organization");
 
   if (currentOrganization === undefined) {
     return json(
@@ -42,18 +41,26 @@ export async function action({ request }: ActionFunctionArgs) {
     };
 
     const id = uuidv4();
-    const messageInformation = {
-      id,
-      sender,
-      message,
-      conversationId: conversation_id,
-    };
+    const messageInformation = [id, sender, message, conversation_id];
 
     //* submit a message
+    const t1 = new Delta();
+    await manageOrgDbs
+      .prepare(
+        "INSERT INTO messages(id, sender, message, conversation_id) VALUES(?, ?, ?, ?)"
+      )
+      .run(messageInformation);
+    t1.stop("Creating a new message");
+
+    const t2 = new Delta();
+    manageOrgDbs.sync();
+    t2.stop("Synchronizing messages");
+
+    const t3 = new Delta();
     const messageSubmitted = await manageOrgDbs
-      .insert(messages)
-      .values(messageInformation)
-      .run();
+      .prepare("SELECT * FROM messages WHERE id = ?")
+      .get(id);
+    t3.stop("Fetching created message");
 
     if (messageSubmitted === undefined) {
       return json(

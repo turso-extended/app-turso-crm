@@ -1,10 +1,11 @@
-import { organizations } from "./../../drizzle/schema";
 import { redirect } from "@vercel/remix";
 import bcrypt from "bcryptjs";
 import { v4 as uuidv4 } from "uuid";
 
 import { commitOrgSession, destroyOrgSession, getOrgSession } from "~/session";
 import { buildDbClient } from "./client";
+import { Delta } from "./utils";
+import { makeOrganization } from "./types";
 
 export interface RegistrationData {
   name: string;
@@ -23,9 +24,11 @@ export interface LoginCredentials {
 export async function login({ email, password }: LoginCredentials) {
   const db = buildDbClient();
 
-  const organization = await db.query.organizations.findFirst({
-    where: (organizations, { eq }) => eq(organizations.email, email),
-  });
+  const t0 = new Delta();
+  const organization = await db
+    .prepare("SELECT * FROM organizations WHERE email = ?")
+    .get(email);
+  t0.stop("Fetching a single organization");
 
   if (organization !== undefined) {
     const isValidPassword = bcrypt.compareSync(
@@ -33,7 +36,7 @@ export async function login({ email, password }: LoginCredentials) {
       (organization.password as string) || ""
     );
 
-    return !isValidPassword ? null : organization;
+    return !isValidPassword ? null : makeOrganization(organization);
   }
 
   return null;
@@ -63,9 +66,11 @@ export async function register({
 
   const db = buildDbClient();
 
-  const existingOrganization = await db.query.organizations.findFirst({
-    where: (organizations, { eq }) => eq(organizations.email, email),
-  });
+  const t1 = new Delta();
+  const existingOrganization = await db
+    .prepare("SELECT * FROM organizations WHERE email = ?")
+    .get(email);
+  t1.stop("Fetching a single organization");
 
   if (existingOrganization !== undefined) {
     return {
@@ -77,25 +82,38 @@ export async function register({
 
   const newUuid = uuidv4();
   const organizationPassword = await bcrypt.hash(password, 10);
+
+  const newOrg = [
+    newUuid,
+    name,
+    website,
+    username,
+    email,
+    organizationPassword,
+    logo,
+  ];
+
+  const time = new Delta();
+  await db
+    .prepare(
+      "INSERT INTO organizations(id, name, website, username, email, password, logo) values(?, ?, ?, ?, ?, ?, ?)"
+    )
+    .run(newOrg);
+  time.stop("Creating a new organization");
+
+  await db.sync();
+
+  const t2 = new Delta();
   const organizationRecord = await db
-    .insert(organizations)
-    .values({
-      id: newUuid,
-      name,
-      email,
-      username,
-      website,
-      password: organizationPassword,
-      logo,
-    })
-    .returning()
-    .get();
+    .prepare("SELECT * FROM organizations WHERE id = ?")
+    .get(newUuid);
+  t2.stop("Fetching created organization");
 
   if (organizationRecord !== undefined) {
     return {
       ok: true,
       message: "Account created",
-      organization: organizationRecord,
+      organization: makeOrganization(organizationRecord),
     };
   }
 
@@ -164,15 +182,18 @@ export async function getOrganizationDetails({
   let existingOrganization;
 
   if (organizationId !== undefined) {
-    existingOrganization = await db.query.organizations.findFirst({
-      where: (organizations, { eq }) => eq(organizations.id, organizationId),
-    });
+    existingOrganization = await db
+      .prepare("SELECT * FROM organizations WHERE id = ?")
+      .get(organizationId);
   } else if (organizationUsername !== undefined) {
-    existingOrganization = await db.query.organizations.findFirst({
-      where: (organizations, { eq }) =>
-        eq(organizations.username, organizationUsername),
-    });
+    existingOrganization = await db
+      .prepare("SELECT * FROM organizations WHERE username = ?")
+      .get(organizationUsername);
+  } else {
+    existingOrganization = undefined;
   }
 
-  return existingOrganization;
+  return existingOrganization !== undefined
+    ? makeOrganization(existingOrganization)
+    : undefined;
 }

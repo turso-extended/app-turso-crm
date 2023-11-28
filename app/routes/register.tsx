@@ -3,13 +3,11 @@ import { useFetcher } from "@remix-run/react";
 import { register } from "~/lib/session.server";
 import { createOrganizationDatabase } from '~/lib/utils';
 import { buildDbClient } from '~/lib/client';
-import { organizations } from 'drizzle/schema';
-import { eq } from 'drizzle-orm';
 import { LoaderIcon } from '~/components/icons';
 
 export const meta: MetaFunction = () => {
   return [
-    { title: "Register - The Mug Store" },
+    { title: "Register - TursoCRM" },
     { name: "description", content: "Create an account" },
   ];
 };
@@ -84,9 +82,10 @@ export const action: ActionFunction = async ({ request }: ActionFunctionArgs) =>
 
   if (newOrgDb.ok && newOrgDb.data !== null) {
     // add database credentials to organization record
-    await buildDbClient().update(organizations).set({
-      dbUrl: newOrgDb.data.url,
-    }).where(eq(organizations.id, accountCreation.organization.id)).run();
+    const db = buildDbClient();
+    await db.prepare("UPDATE organizations SET db_url = ? where id = ?").run([newOrgDb.data.url, accountCreation.organization.id]);
+
+    await db.sync();
 
     return redirect("/login");
   }

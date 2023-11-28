@@ -1,9 +1,9 @@
 import { useFetcher, useLoaderData } from '@remix-run/react';
 import { type LoaderFunctionArgs, type LoaderFunction, redirect } from '@vercel/remix';
-import { buildDbClient as buildOrgDbClient } from '~/lib/client-org';
 import { getAgentDetails, requireAgentId } from '~/lib/agent-session.server';
+import { buildOrgDbClient } from '~/lib/client-org';
 import { getOrganizationDetails } from '~/lib/session.server';
-import type { Agent, Conversation, Organization, Ticket } from '~/lib/types';
+import { makeAgent, type Conversation, type Organization, type Ticket, makeTicket, makeConversation } from '~/lib/types';
 import { unixepochToDate } from '~/lib/utils';
 import { LoaderIcon } from '~/components/icons';
 
@@ -24,22 +24,15 @@ export const loader: LoaderFunction = async ({ request, params }: LoaderFunction
   const db = buildOrgDbClient({ url: org.dbUrl as string });
 
   // fetch open org tickets
-  const tickets = await db.query.tickets.findMany({
-    where: (tickets, { eq }) => eq(tickets.isClosed, 0)
-  });
+  const tickets = await db.prepare("SELECT * FROM tickets WHERE is_closed = ?").all(0);
 
   // fetch agent conversations
-  const conversations = await db.query.conversations.findMany({
-    where: (conversations, { eq }) => eq(conversations.agentId, agentId),
-    with: {
-      ticket: true,
-    }
-  });
+  const conversations = await db.prepare('select "id", "ticket_id", "agent_id", "created_at", "updated_at", (select json_array("id", "customer_email", "customer_name", "query", "is_closed", "service_rating", "created_at", "updated_at") as "data" from (select * from "tickets" "conversations_ticket" where "conversations_ticket"."id" = "conversations"."ticket_id" limit ?) "conversations_ticket") as "ticket" from "conversations" where "conversations"."agent_id" = ?').all([1, agentId]);
 
   return {
-    tickets: tickets as unknown as Ticket[],
-    conversations: conversations as unknown as Conversation[],
-    agent: fetchAgent.agent as unknown as Agent,
+    tickets: tickets.map((ticket: any) => makeTicket(ticket)), // 
+    conversations: conversations.map((conversation: any) => makeConversation(conversation)),
+    agent: makeAgent(fetchAgent),
     org
   };
 }
@@ -85,10 +78,10 @@ export default function AgentDashboard() {
         <h2 className="text-2xl text-accent-800 text-left mb-8">My Conversations.</h2>
 
         {conversations.length > 0 ? <ul className='list-none p-2 flex flex-col gap-2'>
-          {conversations.map((conversation: Conversation & { ticket: Ticket }) => <li key={conversation.id}>
+          {conversations.map((conversation: Conversation) => <li key={conversation.id}>
             <div className='flex gap-4 justify-between items-center ring-[1px] ring-gray-200 p-2'>
               <div className='flex flex-col'>
-                <span>{conversation.ticket.customerName}</span>
+                <span>{conversation.ticket?.customerName}</span>
                 <span className='text-sm text-gray-400'>{unixepochToDate(conversation.createdAt as number)}</span>
               </div>
               <startConversationFetcher.Form
@@ -96,7 +89,7 @@ export default function AgentDashboard() {
                 method='post'
               >
                 <input type="hidden" name="organization_id" value={org.id} />
-                <input type="hidden" name="ticket_id" value={conversation.ticket.id} />
+                <input type="hidden" name="ticket_id" value={conversation.ticket?.id} />
                 <a className='px-2 py-1 border border-gray-300 hover:border-gray-600 rounded-md text-sm'
                   href={`/agent/${org.username}/talk/${conversation.id}`}
                 >Chat</a>

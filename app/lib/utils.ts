@@ -1,7 +1,13 @@
 import axios from "axios";
-import type { Organization } from "./types";
-import { createClient } from "@libsql/client/http";
-import { buildDbClient } from "./client-org";
+import {
+  makeAgent,
+  makeConversation,
+  makeMessage,
+  makeTicket,
+  type Organization,
+} from "./types";
+import { buildOrgDbClient } from "./client-org";
+import { buildDbClient } from "./client";
 
 /**
  *
@@ -25,6 +31,39 @@ export function unixepochToDate(val: number) {
   });
 
   return date;
+}
+
+/**
+ * @description Constructs local path for tenant db
+ * @param url: Turso database URL
+ * */
+export function tenantDbLocalPath(url: string) {
+  return `databases/${(url as string).replace(
+    `-${process.env.APP_ORGANIZATION}.turso.io`,
+    ".db"
+  )}`;
+}
+
+/**
+ * @description Calculates time diff between two points
+ */
+export class Delta {
+  time: any;
+
+  /**
+   * Start counting time
+   */
+  constructor() {
+    this.time = performance.now();
+  }
+
+  /**
+   * @description Stop counting time
+   * @param label Label to accompany time diff output
+   */
+  stop(label = "Request Delta") {
+    console.log(`${label}: ${(performance.now() - this.time).toFixed(3)} ms`);
+  }
 }
 
 export async function createOrganizationDatabase(organization: Organization) {
@@ -57,14 +96,11 @@ export async function createOrganizationDatabase(organization: Organization) {
   const { jwt: authToken } = orgToken.data;
 
   // run migrations
-  const db = createClient({
-    url: `libsql://${dbUrl}`,
-    authToken,
-  });
+  const db = buildOrgDbClient({ url: dbUrl });
 
-  const statements = orgSchema.split("--> statement-breakpoint");
+  await db.exec(orgSchema);
 
-  await db.batch(statements);
+  await db.sync();
 
   return {
     ok: true,
@@ -76,24 +112,33 @@ export async function createOrganizationDatabase(organization: Organization) {
   };
 }
 
+export async function getAllOrganizations() {
+  const db = buildDbClient();
+
+  const time = new Delta();
+  const organizations = await db.prepare("SELECT * FROM organizations").all();
+  time.stop();
+
+  return organizations !== undefined
+    ? organizations.map((org: any) => ({ ...org, dbUrl: org.db_url }))
+    : [];
+}
+
 export async function getConversationDetails(
   conversationId: string,
   org: Organization
 ) {
-  const db = buildDbClient({
+  const db = buildOrgDbClient({
     url: `${org.dbUrl}`,
   });
 
-  const conversation = await db.query.conversations.findFirst({
-    where: (conversations, { eq }) => eq(conversations.id, conversationId),
-    with: {
-      messages: true,
-      agent: true,
-      ticket: true,
-    },
-  });
+  const conversation = await db
+    .prepare(
+      'select "id", "ticket_id", "agent_id", "created_at", "updated_at", (select coalesce(json_group_array(json_array("id", "sender", "message", "conversation_id", "created_at", "updated_at")), json_array()) as "data" from "messages" "conversations_messages" where "conversations_messages"."conversation_id" = "conversations"."id") as "messages", (select json_array("id", "full_name", "email", "password", "created_at", "updated_at") as "data" from (select * from "agents" "conversations_agent" where "conversations_agent"."id" = "conversations"."agent_id" limit 1) "conversations_agent") as "agent", (select json_array("id", "customer_email", "customer_name", "query", "is_closed", "service_rating", "created_at", "updated_at") as "data" from (select * from "tickets" "conversations_ticket" where "conversations_ticket"."id" = "conversations"."ticket_id" limit 1) "conversations_ticket") as "ticket" from "conversations" where "conversations"."id" = ? limit 1'
+    )
+    .get(conversationId);
 
-  return conversation;
+  return makeConversation(conversation);
 }
 
 export async function getCustomerConversationDetails({
@@ -110,29 +155,28 @@ export async function getCustomerConversationDetails({
     };
   }
 
-  const db = buildDbClient({
+  const db = buildOrgDbClient({
     url: `${org.dbUrl}`,
   });
 
-  const conversation = await db.query.conversations.findFirst({
-    where: (conversation, { eq }) => eq(conversation.id, conversationId),
-    with: {
-      ticket: true,
-      messages: true,
-      agent: true,
-    },
-  });
+  const conversation = await db
+    .prepare(
+      'select "id", "ticket_id", "agent_id", "created_at", "updated_at", (select json_array("id", "customer_email", "customer_name", "query", "is_closed", "service_rating", "created_at", "updated_at") as "data" from (select * from "tickets" "conversations_ticket" where "conversations_ticket"."id" = "conversations"."ticket_id" limit 1) "conversations_ticket") as "ticket", (select coalesce(json_group_array(json_array("id", "sender", "message", "conversation_id", "created_at", "updated_at")), json_array()) as "data" from "messages" "conversations_messages" where "conversations_messages"."conversation_id" = "conversations"."id") as "messages", (select json_array("id", "full_name", "email", "password", "created_at", "updated_at") as "data" from (select * from "agents" "conversations_agent" where "conversations_agent"."id" = "conversations"."agent_id" limit 1) "conversations_agent") as "agent" from "conversations" where "conversations"."id" = ? limit 1'
+    )
+    .get(conversationId);
 
-  if (conversation === undefined || conversation?.ticket.isClosed == 1) {
+  const parsedConversation = makeConversation(conversation);
+
+  if (conversation === undefined || parsedConversation.ticket?.isClosed == 1) {
     return {
       ok: false,
       data: null,
     };
   }
 
-  const customer = await db.query.tickets.findFirst({
-    where: (tickets, { eq }) => eq(tickets.id, conversation.ticket.id),
-  });
+  const customer = await db
+    .prepare("SELECT * FROM tickets WHERE id = ?")
+    .get(parsedConversation.ticket?.id);
 
   if (customer === undefined) {
     return {
@@ -143,7 +187,10 @@ export async function getCustomerConversationDetails({
 
   return {
     ok: true,
-    data: { customer, conversation },
+    data: {
+      customer: makeTicket(customer),
+      conversation: makeConversation(conversation),
+    },
   };
 }
 

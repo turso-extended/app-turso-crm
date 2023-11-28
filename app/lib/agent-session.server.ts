@@ -6,8 +6,8 @@ import {
   destroyAgentSession,
   getAgentSession,
 } from "~/session";
-import { buildDbClient as buildOrgDbClient } from "./client-org";
-import type { Organization } from "./types";
+import { buildOrgDbClient } from "./client-org";
+import { makeAgent, type Organization } from "./types";
 
 export interface RegistrationData {
   name: string;
@@ -32,9 +32,9 @@ export async function agentLogin({
     url: organization.dbUrl as string,
   });
 
-  const agent = await db.query.agents.findFirst({
-    where: (agents, { eq }) => eq(agents.email, email),
-  });
+  const agent = await db
+    .prepare("SELECT * FROM agents where email = ?")
+    .get(email);
 
   if (agent !== undefined) {
     const isValidPassword = bcrypt.compareSync(
@@ -108,9 +108,9 @@ export async function getAgentDetails({
     url: `${org.dbUrl}`,
   });
 
-  const existingAgent = await db.query.agents.findFirst({
-    where: (agents, { eq }) => eq(agents.id, agentId),
-  });
+  const existingAgent = await db
+    .prepare("SELECT * FROM agents WHERE id = ?")
+    .get(agentId);
 
   if (existingAgent === undefined) {
     return {
@@ -121,6 +121,6 @@ export async function getAgentDetails({
 
   return {
     ok: true,
-    agent: existingAgent,
+    agent: makeAgent(existingAgent),
   };
 }

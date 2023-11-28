@@ -1,9 +1,9 @@
 import type { LoaderFunction, LoaderFunctionArgs, TypedResponse } from '@remix-run/node';
 import { json, redirect } from '@remix-run/node';
 import { useFetcher, useLoaderData } from '@remix-run/react'
-import type { Agent, Conversation, Ticket } from '~/lib/types';
+import { makeTicket, type Agent, type Conversation, type Ticket, makeAgent } from '~/lib/types';
 import { LoaderIcon } from '~/components/icons';
-import { buildDbClient } from '~/lib/client-org';
+import { buildOrgDbClient } from '~/lib/client-org';
 import { getOrganizationDetails, requireOrganizationId } from '~/lib/session.server';
 import { unixepochToDate } from '~/lib/utils';
 
@@ -21,18 +21,14 @@ export const loader: LoaderFunction = async ({ request }: LoaderFunctionArgs): P
     return redirect("/login");
   }
 
-  const db = buildDbClient({ url: orgInfo.dbUrl as string });
+  const db = buildOrgDbClient({ url: orgInfo.dbUrl as string });
 
-  const agents = await db.query.agents.findMany();
-  const tickets = await db.query.tickets.findMany({
-    with: {
-      conversation: true
-    }
-  });
+  const agents = await db.prepare("SELECT * FROM agents").all();
+  const tickets = await db.prepare('select "id", "customer_email", "customer_name", "query", "is_closed", "service_rating", "created_at", "updated_at", (select json_array("id", "ticket_id", "agent_id", "created_at", "updated_at") as "data" from (select * from "conversations" "tickets_conversation" where "tickets_conversation"."ticket_id" = "tickets"."id") "tickets_conversation") as "conversation" from "tickets"').all();
 
   return json({
-    agents: agents as unknown as Agent[],
-    tickets: tickets as unknown as Ticket[]
+    agents: agents.map((agent: any) => makeAgent(agent)),
+    tickets: tickets.map((ticket: any) => makeTicket(ticket)),
   })
 }
 

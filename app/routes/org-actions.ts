@@ -1,19 +1,15 @@
 import { type ActionFunctionArgs, json, redirect } from "@vercel/remix";
 import bcrypt from "bcryptjs";
-import { buildDbClient } from "~/lib/client";
-import { buildDbClient as buildOrgDbClient } from "~/lib/client-org";
+import { buildOrgDbClient } from "~/lib/client-org";
 import {
   destroyOrganizationSession,
+  getOrganizationDetails,
   requireOrganizationId,
 } from "~/lib/session.server";
 import { v4 as uuidv4 } from "uuid";
-import type { Agent } from "~/lib/types";
-import { agents } from "drizzle/org-schema";
-import { dateToUnixepoch } from "~/lib/utils";
+import { Delta } from "~/lib/utils";
 
 export async function action({ request }: ActionFunctionArgs) {
-  const db = buildDbClient();
-
   const organizationId = await requireOrganizationId({
     request,
     redirectTo: "/login",
@@ -24,8 +20,8 @@ export async function action({ request }: ActionFunctionArgs) {
   }
 
   // get organization
-  const currentOrganization = await db.query.organizations.findFirst({
-    where: (organizations, { eq }) => eq(organizations.id, organizationId),
+  const currentOrganization = await getOrganizationDetails({
+    organizationId: organizationId,
   });
 
   if (currentOrganization === undefined) {
@@ -50,20 +46,20 @@ export async function action({ request }: ActionFunctionArgs) {
     const id = uuidv4();
     const password = uuidv4().split("-")[0];
     const hash = await bcrypt.hash(password, 10);
-    const agentInformation: Agent = {
-      id,
-      fullName: full_name,
-      email,
-      password: hash,
-      createdAt: dateToUnixepoch(),
-      updatedAt: dateToUnixepoch(),
-    };
+    const agentInformation = [id, full_name, email, hash];
 
     //* add agent to db
+    const t1 = new Delta();
     const agentAdded = await manageOrgDbs
-      .insert(agents)
-      .values(agentInformation)
-      .run();
+      .prepare(
+        "INSERT INTO agents(id, full_name, email, password) values(?, ?, ?, ?)"
+      )
+      .run(agentInformation);
+    t1.stop("Creation of new agent");
+
+    const t2 = new Delta();
+    await manageOrgDbs.sync();
+    t2.stop("syncing org database");
 
     if (agentAdded === undefined) {
       return json(
