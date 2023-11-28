@@ -36,7 +36,6 @@ export interface Agent {
 }
 
 export function makeAgent(agent: any): Agent {
-  // console.log("Received agent: ", { agent });
   if (agent.length === undefined) {
     return {
       id: agent.id,
@@ -70,7 +69,6 @@ export interface Ticket {
 }
 
 export function makeTicket(ticket: any): Ticket {
-  console.log("Received ticket: ", { ticket });
   if (ticket.length === undefined) {
     return {
       id: ticket.id,
@@ -113,7 +111,6 @@ export interface Conversation {
 }
 
 export function makeConversation(conversation: any): Conversation {
-  console.log("received conversation: ", { conversation });
   if (conversation.length === undefined) {
     return {
       id: conversation.id,
@@ -164,7 +161,6 @@ export interface Message {
 }
 
 export function makeMessage(message: any): Message {
-  // console.log("Received message: ", { message });
   if (message.length === undefined) {
     return {
       id: message.id,
