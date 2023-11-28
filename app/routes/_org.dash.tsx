@@ -24,8 +24,13 @@ export const loader: LoaderFunction = async ({ request }: LoaderFunctionArgs): P
 
   const db = buildOrgDbClient({ url: orgInfo.dbUrl as string });
 
+  const t1 = new Delta();
   const agents = await db.prepare("SELECT * FROM agents").all();
+  t1.stop("Fetching all agents within organization");
+
+  const t2 = new Delta();
   const tickets = await db.prepare('select "id", "customer_email", "customer_name", "query", "is_closed", "service_rating", "created_at", "updated_at", (select json_array("id", "ticket_id", "agent_id", "created_at", "updated_at") as "data" from (select * from "conversations" "tickets_conversation" where "tickets_conversation"."ticket_id" = "tickets"."id") "tickets_conversation") as "conversation" from "tickets"').all();
+  t2.stop("Fetching all open tickets within an organization");
 
   pageLatency.stop("Page requests latency [/dash]");
   return json({

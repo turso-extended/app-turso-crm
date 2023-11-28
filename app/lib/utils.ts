@@ -126,11 +126,13 @@ export async function getConversationDetails(
     url: `${org.dbUrl}`,
   });
 
+  const t0 = new Delta();
   const conversation = await db
     .prepare(
       'select "id", "ticket_id", "agent_id", "created_at", "updated_at", (select coalesce(json_group_array(json_array("id", "sender", "message", "conversation_id", "created_at", "updated_at")), json_array()) as "data" from "messages" "conversations_messages" where "conversations_messages"."conversation_id" = "conversations"."id") as "messages", (select json_array("id", "full_name", "email", "password", "created_at", "updated_at") as "data" from (select * from "agents" "conversations_agent" where "conversations_agent"."id" = "conversations"."agent_id" limit 1) "conversations_agent") as "agent", (select json_array("id", "customer_email", "customer_name", "query", "is_closed", "service_rating", "created_at", "updated_at") as "data" from (select * from "tickets" "conversations_ticket" where "conversations_ticket"."id" = "conversations"."ticket_id" limit 1) "conversations_ticket") as "ticket" from "conversations" where "conversations"."id" = ? limit 1'
     )
     .get(conversationId);
+  t0.stop("Fetching a conversation [plus messages & participants]");
 
   return makeConversation(conversation);
 }

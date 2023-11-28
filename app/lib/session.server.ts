@@ -182,13 +182,17 @@ export async function getOrganizationDetails({
   let existingOrganization;
 
   if (organizationId !== undefined) {
+    const t1 = new Delta();
     existingOrganization = await db
       .prepare("SELECT * FROM organizations WHERE id = ?")
       .get(organizationId);
+    t1.stop("Fetching one organization");
   } else if (organizationUsername !== undefined) {
+    const t2 = new Delta();
     existingOrganization = await db
       .prepare("SELECT * FROM organizations WHERE username = ?")
       .get(organizationUsername);
+    t2.stop("Fetching one organization");
   } else {
     existingOrganization = undefined;
   }
