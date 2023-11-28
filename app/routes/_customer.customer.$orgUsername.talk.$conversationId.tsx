@@ -4,9 +4,10 @@ import { useEffect, useRef, useState } from 'react';
 import { BuildingIcon, LoaderIcon } from '~/components/icons';
 import { getOrganizationDetails } from '~/lib/session.server';
 import type { Message, Organization } from '~/lib/types';
-import { getCustomerConversationDetails } from '~/lib/utils';
+import { Delta, getCustomerConversationDetails } from '~/lib/utils';
 
 export const loader: LoaderFunction = async ({ request, params }: LoaderFunctionArgs): Promise<any> => {
+  const pageLatency = new Delta();
 
   const org: Organization = await getOrganizationDetails({ organizationUsername: params.orgUsername as string }) as Organization;
 
@@ -19,6 +20,8 @@ export const loader: LoaderFunction = async ({ request, params }: LoaderFunction
   if (!customer.ok) {
     return redirect(`/`); // * unknown ticket
   }
+
+  pageLatency.stop(`Page requests latency [/customer/${params.orgUsername}/talk/${params.conversationId}]`);
 
   return {
     ...customer.data,

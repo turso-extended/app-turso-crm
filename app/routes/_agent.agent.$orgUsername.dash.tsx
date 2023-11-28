@@ -4,10 +4,11 @@ import { getAgentDetails, requireAgentId } from '~/lib/agent-session.server';
 import { buildOrgDbClient } from '~/lib/client-org';
 import { getOrganizationDetails } from '~/lib/session.server';
 import { makeAgent, type Conversation, type Organization, type Ticket, makeTicket, makeConversation } from '~/lib/types';
-import { unixepochToDate } from '~/lib/utils';
+import { Delta, unixepochToDate } from '~/lib/utils';
 import { LoaderIcon } from '~/components/icons';
 
 export const loader: LoaderFunction = async ({ request, params }: LoaderFunctionArgs): Promise<any> => {
+  const pageLatency = new Delta();
   const org: Organization | undefined = await getOrganizationDetails({ organizationUsername: params.orgUsername as string }) as Organization;
 
   const agentId = await requireAgentId({ request, redirectTo: `/agent/${org.username}/login` });
@@ -29,6 +30,7 @@ export const loader: LoaderFunction = async ({ request, params }: LoaderFunction
   // fetch agent conversations
   const conversations = await db.prepare('select "id", "ticket_id", "agent_id", "created_at", "updated_at", (select json_array("id", "customer_email", "customer_name", "query", "is_closed", "service_rating", "created_at", "updated_at") as "data" from (select * from "tickets" "conversations_ticket" where "conversations_ticket"."id" = "conversations"."ticket_id" limit ?) "conversations_ticket") as "ticket" from "conversations" where "conversations"."agent_id" = ?').all([1, agentId]);
 
+  pageLatency.stop(`Page requests latency [/agent/${params.orgUsername}/dash]`)
   return {
     tickets: tickets.map((ticket: any) => makeTicket(ticket)), // 
     conversations: conversations.map((conversation: any) => makeConversation(conversation)),

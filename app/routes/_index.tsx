@@ -1,7 +1,7 @@
 import { json, type TypedResponse, type LoaderFunction, type MetaFunction } from "@remix-run/node";
 import { useLoaderData } from '@remix-run/react';
 import type { Organization } from '~/lib/types';
-import { getAllOrganizations } from '~/lib/utils';
+import { Delta, getAllOrganizations } from '~/lib/utils';
 
 export const meta: MetaFunction = () => {
   return [
@@ -11,7 +11,9 @@ export const meta: MetaFunction = () => {
 };
 
 export const loader: LoaderFunction = async (): Promise<{ organizations: Organization[] } | TypedResponse> => {
+  const pageLatency = new Delta();
   const organizations = await getAllOrganizations();
+  pageLatency.stop("Page requests latency [/]")
 
   return json({
     organizations: organizations as unknown as Organization[]

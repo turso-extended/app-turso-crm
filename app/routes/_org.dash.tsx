@@ -5,12 +5,13 @@ import { makeTicket, type Agent, type Conversation, type Ticket, makeAgent } fro
 import { LoaderIcon } from '~/components/icons';
 import { buildOrgDbClient } from '~/lib/client-org';
 import { getOrganizationDetails, requireOrganizationId } from '~/lib/session.server';
-import { unixepochToDate } from '~/lib/utils';
+import { Delta, unixepochToDate } from '~/lib/utils';
 
 export const loader: LoaderFunction = async ({ request }: LoaderFunctionArgs): Promise<{
   agents: any,
   tickets: any
 } | TypedResponse> => {
+  const pageLatency = new Delta();
   const organizationId = await requireOrganizationId({ request, redirectTo: "/login" });
   if (organizationId === undefined) {
     return redirect("/login");
@@ -26,6 +27,7 @@ export const loader: LoaderFunction = async ({ request }: LoaderFunctionArgs): P
   const agents = await db.prepare("SELECT * FROM agents").all();
   const tickets = await db.prepare('select "id", "customer_email", "customer_name", "query", "is_closed", "service_rating", "created_at", "updated_at", (select json_array("id", "ticket_id", "agent_id", "created_at", "updated_at") as "data" from (select * from "conversations" "tickets_conversation" where "tickets_conversation"."ticket_id" = "tickets"."id") "tickets_conversation") as "conversation" from "tickets"').all();
 
+  pageLatency.stop("Page requests latency [/dash]");
   return json({
     agents: agents.map((agent: any) => makeAgent(agent)),
     tickets: tickets.map((ticket: any) => makeTicket(ticket)),

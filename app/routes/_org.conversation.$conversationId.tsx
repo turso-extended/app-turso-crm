@@ -3,9 +3,10 @@ import { type LoaderFunctionArgs, type LoaderFunction, redirect } from '@vercel/
 import { useEffect, useRef } from 'react';
 import { getOrganizationDetails, requireOrganizationId } from '~/lib/session.server';
 import type { Message, Organization } from '~/lib/types';
-import { getConversationDetails } from '~/lib/utils';
+import { Delta, getConversationDetails } from '~/lib/utils';
 
 export const loader: LoaderFunction = async ({ request, params }: LoaderFunctionArgs): Promise<any> => {
+  const pageLatency = new Delta();
 
   const orgId = await requireOrganizationId({ request, redirectTo: "/login" });
 
@@ -17,6 +18,7 @@ export const loader: LoaderFunction = async ({ request, params }: LoaderFunction
 
   const conversation = await getConversationDetails(params.conversationId as string, org)
 
+  pageLatency.stop(`Page requests latency [/conversation/${params.conversationId}]`);
   return {
     conversation,
   };

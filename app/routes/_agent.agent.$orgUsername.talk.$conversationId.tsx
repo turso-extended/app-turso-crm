@@ -5,9 +5,10 @@ import { LoaderIcon } from '~/components/icons';
 import { requireAgentId } from '~/lib/agent-session.server';
 import { getOrganizationDetails } from '~/lib/session.server';
 import type { Message, Organization } from '~/lib/types';
-import { getConversationDetails } from '~/lib/utils';
+import { Delta, getConversationDetails } from '~/lib/utils';
 
 export const loader: LoaderFunction = async ({ request, params }: LoaderFunctionArgs): Promise<any> => {
+  const pageLatency = new Delta();
 
   const org: Organization | undefined = await getOrganizationDetails({ organizationUsername: params.orgUsername as string }) as Organization;
 
@@ -18,6 +19,7 @@ export const loader: LoaderFunction = async ({ request, params }: LoaderFunction
 
   const conversation = await getConversationDetails(params.conversationId as string, org)
 
+  pageLatency.stop(`Page requests latency [/agent/${params.orgUsername}/talk/${params.conversationId}]`);
   return {
     conversation,
     org
